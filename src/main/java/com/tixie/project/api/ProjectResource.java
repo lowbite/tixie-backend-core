@@ -17,6 +17,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Path("/api/v1/companies/{companyId}/projects")
@@ -44,7 +45,15 @@ public class ProjectResource {
     @Operation(summary = "List projects for a company")
     @APIResponse(responseCode = "200", description = "List of projects")
     @APIResponse(responseCode = "404", description = "Company not found")
-    public List<ProjectResponse> list(@PathParam("companyId") UUID companyId) {
+    public List<ProjectResponse> list(@PathParam("companyId") UUID companyId,
+                                      @QueryParam("page") @DefaultValue("0") int page,
+                                      @QueryParam("size") @DefaultValue("100") int size) {
+        var projects = projectService.list(companyId, page, size);
+        var statusesByProjectId = projectService.getStatusesByProjectIds(projects.stream().map(p -> p.id).toList());
+        return projects.stream().map(project -> toResponse(project, statusesByProjectId)).toList();
+    }
+
+    public List<ProjectResponse> list(UUID companyId) {
         return projectService.list(companyId).stream().map(this::toResponse).toList();
     }
 
@@ -82,13 +91,17 @@ public class ProjectResource {
     }
 
     private ProjectResponse toResponse(ProjectEntity project) {
+        return toResponse(project, Map.of(project.id, projectService.getStatuses(project.id)));
+    }
+
+    private ProjectResponse toResponse(ProjectEntity project, Map<UUID, List<ProjectStatusEntity>> statusesByProjectId) {
         var response = new ProjectResponse();
         response.id = project.id;
         response.companyId = project.companyId;
         response.name = project.name;
         response.key = project.key;
         response.createdAt = project.createdAt;
-        response.statuses = projectService.getStatuses(project.id).stream()
+        response.statuses = statusesByProjectId.getOrDefault(project.id, List.of()).stream()
                 .sorted(java.util.Comparator.comparingInt(s -> s.displayOrder))
                 .map(this::toStatusRef)
                 .toList();

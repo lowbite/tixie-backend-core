@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                       http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="008-drop-status-name-unique-constraint" author="dev">
+        <dropUniqueConstraint tableName="project_statuses"
+                              constraintName="uq_project_statuses_project_name"/>
+    </changeSet>
+
+    <changeSet id="008-active-status-unique-indexes" author="dev">
+        <sql>
+            CREATE UNIQUE INDEX uq_project_statuses_active_project_lower_name
+                ON project_statuses (project_id, lower(name))
+                WHERE deleted_at IS NULL;
+        </sql>
+        <rollback>
+            <sql>DROP INDEX IF EXISTS uq_project_statuses_active_project_lower_name;</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="008-active-default-status-unique-index" author="dev">
+        <sql>
+            CREATE UNIQUE INDEX uq_project_statuses_active_default
+                ON project_statuses (project_id)
+                WHERE deleted_at IS NULL AND is_default = true;
+        </sql>
+        <rollback>
+            <sql>DROP INDEX IF EXISTS uq_project_statuses_active_default;</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="008-issue-hot-path-indexes" author="dev">
+        <sql>
+            CREATE INDEX idx_issues_active_project_status_position_created
+                ON issues (project_id, status_id, position, created_at)
+                WHERE deleted_at IS NULL;
+        </sql>
+        <sql>
+            CREATE INDEX idx_issues_active_project_position_created
+                ON issues (project_id, position, created_at)
+                WHERE deleted_at IS NULL;
+        </sql>
+        <rollback>
+            <sql>DROP INDEX IF EXISTS idx_issues_active_project_status_position_created;</sql>
+            <sql>DROP INDEX IF EXISTS idx_issues_active_project_position_created;</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="008-project-status-hot-path-index" author="dev">
+        <sql>
+            CREATE INDEX idx_project_statuses_active_project_order
+                ON project_statuses (project_id, display_order)
+                WHERE deleted_at IS NULL;
+        </sql>
+        <rollback>
+            <sql>DROP INDEX IF EXISTS idx_project_statuses_active_project_order;</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -37,7 +37,7 @@ public class IssueValidator {
         companyRepository.findActiveById(project.companyId)
                 .orElseThrow(() -> new NotFoundException("Company '" + project.companyId + "' not found"));
 
-        projectStatusRepository.findByIdAndProjectId(req.statusId, projectId)
+        projectStatusRepository.findActiveByIdAndProjectId(req.statusId, projectId)
                 .orElseThrow(() -> new ValidationException("INVALID_STATUS",
                         "Status '" + req.statusId + "' does not belong to project '" + projectId + "'"));
 
@@ -51,22 +51,47 @@ public class IssueValidator {
     }
 
     public void validatePatch(PatchIssueRequest req, IssueEntity existing) {
-        if (req.type != null) {
+        if (req.isTypeSet()) {
             throw new ValidationException("IMMUTABLE_TYPE", "Issue type cannot be changed");
         }
 
-        if (req.statusId != null) {
-            projectStatusRepository.findByIdAndProjectId(req.statusId, existing.projectId)
-                    .orElseThrow(() -> new ValidationException("INVALID_STATUS",
-                            "Status '" + req.statusId + "' does not belong to project '" + existing.projectId + "'"));
+        if (req.isTitleSet() && req.getTitle() == null) {
+            throw new ValidationException("INVALID_TITLE", "Issue title cannot be null");
         }
 
-        if (req.parentId != null) {
+        if (req.isPrioritySet() && req.getPriority() == null) {
+            throw new ValidationException("INVALID_PRIORITY", "Issue priority cannot be null");
+        }
+
+        if (req.isStatusIdSet()) {
+            if (req.getStatusId() == null) {
+                throw new ValidationException("INVALID_STATUS", "Issue status cannot be null");
+            }
+            projectStatusRepository.findActiveByIdAndProjectId(req.getStatusId(), existing.projectId)
+                    .orElseThrow(() -> new ValidationException("INVALID_STATUS",
+                            "Status '" + req.getStatusId() + "' does not belong to project '" + existing.projectId + "'"));
+        }
+
+        if (req.isParentIdSet() && req.getParentId() != null) {
             if (existing.type == IssueType.EPIC) {
                 throw new ValidationException("INVALID_PARENT", "EPIC issues cannot have a parent");
             }
-            validateParent(req.parentId, existing.projectId, existing.type);
+            validateParent(req.getParentId(), existing.projectId, existing.type);
         }
+    }
+
+    public void validateTransition(UUID targetStatusId, IssueEntity existing) {
+        if (existing.statusId.equals(targetStatusId)) {
+            throw new ValidationException("NOOP_TRANSITION", "Issue is already in target status");
+        }
+
+        validateStatusBelongsToProject(targetStatusId, existing.projectId);
+    }
+
+    public void validateStatusBelongsToProject(UUID targetStatusId, UUID projectId) {
+        projectStatusRepository.findActiveByIdAndProjectId(targetStatusId, projectId)
+                .orElseThrow(() -> new ValidationException("INVALID_STATUS",
+                        "Status '" + targetStatusId + "' does not belong to project '" + projectId + "'"));
     }
 
     private void validateParent(UUID parentId, UUID projectId, IssueType type) {

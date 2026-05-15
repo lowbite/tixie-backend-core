@@ -4,6 +4,7 @@ import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.*;
 import org.hibernate.annotations.UuidGenerator;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -26,4 +27,7 @@ public class ProjectStatusEntity extends PanacheEntityBase {
 
     @Column(name = "is_default", nullable = false)
     public boolean isDefault;
+
+    @Column(name = "deleted_at")
+    public Instant deletedAt;
 }

@@ -40,6 +40,11 @@ public class CompanyResource {
     @GET
     @Operation(summary = "List all active companies")
     @APIResponse(responseCode = "200", description = "List of companies")
+    public List<CompanyResponse> list(@QueryParam("page") @DefaultValue("0") int page,
+                                      @QueryParam("size") @DefaultValue("100") int size) {
+        return companyService.list(page, size).stream().map(this::toResponse).toList();
+    }
+
     public List<CompanyResponse> list() {
         return companyService.list().stream().map(this::toResponse).toList();
     }

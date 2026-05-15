@@ -3,9 +3,14 @@ package com.tixie.issue.api;
 import com.tixie.issue.IssueEntity;
 import com.tixie.issue.api.dto.CreateIssueRequest;
 import com.tixie.issue.api.dto.IssueResponse;
+import com.tixie.issue.api.dto.MoveIssueRequest;
 import com.tixie.issue.api.dto.PatchIssueRequest;
+import com.tixie.issue.api.dto.ProjectBoardResponse;
+import com.tixie.issue.api.dto.TransitionIssueRequest;
 import com.tixie.issue.domain.IssueService;
+import com.tixie.project.ProjectStatusEntity;
 import com.tixie.project.ProjectStatusRepository;
+import io.smallrye.common.annotation.RunOnVirtualThread;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.*;
@@ -16,12 +21,16 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Path("/api/v1/projects/{projectId}/issues")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Issues")
+@RunOnVirtualThread
 public class IssueResource {
 
     @Inject
@@ -44,8 +53,22 @@ public class IssueResource {
     @Operation(summary = "List issues for a project")
     @APIResponse(responseCode = "200", description = "List of issues")
     @APIResponse(responseCode = "404", description = "Project not found")
-    public List<IssueResponse> list(@PathParam("projectId") UUID projectId) {
+    public List<IssueResponse> list(@PathParam("projectId") UUID projectId,
+                                    @QueryParam("page") @DefaultValue("0") int page,
+                                    @QueryParam("size") @DefaultValue("100") int size) {
+        return mapIssues(issueService.list(projectId, page, size));
+    }
+
+    public List<IssueResponse> list(UUID projectId) {
         return issueService.list(projectId).stream().map(this::toResponse).toList();
+    }
+
+    private List<IssueResponse> mapIssues(List<IssueEntity> issues) {
+        var statusesById = projectStatusRepository.findActiveByIds(
+                        issues.stream().map(i -> i.statusId).distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(s -> s.id, Function.identity()));
+        return issues.stream().map(issue -> toResponse(issue, statusesById)).toList();
     }
 
     @GET
@@ -81,7 +104,39 @@ public class IssueResource {
         return Response.noContent().build();
     }
 
+    @GET
+    @Path("/board")
+    @Operation(summary = "Get project board with columns and ordered issues")
+    public ProjectBoardResponse board(@PathParam("projectId") UUID projectId) {
+        return issueService.board(projectId);
+    }
+
+    @POST
+    @Path("/{issueId}/transitions")
+    @Operation(summary = "Transition issue to another status")
+    @APIResponse(responseCode = "200", description = "Issue transitioned")
+    @APIResponse(responseCode = "400", description = "Validation error")
+    @APIResponse(responseCode = "404", description = "Issue not found")
+    public IssueResponse transition(@PathParam("projectId") UUID projectId,
+                                    @PathParam("issueId") UUID issueId,
+                                    @Valid TransitionIssueRequest req) {
+        return toResponse(issueService.transition(projectId, issueId, req.targetStatusId));
+    }
+
+    @POST
+    @Path("/{issueId}/move")
+    @Operation(summary = "Move issue to status/position on board")
+    public IssueResponse move(@PathParam("projectId") UUID projectId,
+                              @PathParam("issueId") UUID issueId,
+                              @Valid MoveIssueRequest req) {
+        return toResponse(issueService.move(projectId, issueId, req));
+    }
+
     private IssueResponse toResponse(IssueEntity issue) {
+        return toResponse(issue, Map.of());
+    }
+
+    private IssueResponse toResponse(IssueEntity issue, Map<UUID, ProjectStatusEntity> statusesById) {
         var response = new IssueResponse();
         response.id = issue.id;
         response.issueKey = issue.issueKey;
@@ -94,8 +149,13 @@ public class IssueResource {
         response.createdAt = issue.createdAt;
         response.updatedAt = issue.updatedAt;
 
-        projectStatusRepository.findByIdOptional(issue.statusId).ifPresent(status ->
-                response.status = new IssueResponse.StatusRef(status.id, status.name));
+        var status = statusesById.get(issue.statusId);
+        if (status != null) {
+            response.status = new IssueResponse.StatusRef(status.id, status.name);
+        } else {
+            projectStatusRepository.findByIdOptional(issue.statusId).ifPresent(found ->
+                    response.status = new IssueResponse.StatusRef(found.id, found.name));
+        }
 
         return response;
     }

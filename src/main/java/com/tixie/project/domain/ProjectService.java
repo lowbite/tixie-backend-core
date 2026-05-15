@@ -1,6 +1,7 @@
 package com.tixie.project.domain;
 
 import com.tixie.company.CompanyRepository;
+import com.tixie.issue.domain.IssueSoftDeleteHandler;
 import com.tixie.project.ProjectEntity;
 import com.tixie.project.ProjectRepository;
 import com.tixie.project.ProjectStatusEntity;
@@ -14,7 +15,9 @@ import jakarta.ws.rs.NotFoundException;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class ProjectService {
@@ -30,6 +33,9 @@ public class ProjectService {
 
     @Inject
     ProjectValidator validator;
+
+    @Inject
+    IssueSoftDeleteHandler issueSoftDeleteHandler;
 
     @Transactional
     public ProjectEntity create(UUID companyId, CreateProjectRequest req) {
@@ -54,9 +60,21 @@ public class ProjectService {
         return projectRepository.findActiveByCompanyId(companyId);
     }
 
+    public List<ProjectEntity> list(UUID companyId, int page, int size) {
+        companyRepository.findActiveById(companyId)
+                .orElseThrow(() -> new NotFoundException("Company '" + companyId + "' not found"));
+
+        return projectRepository.findActiveByCompanyId(companyId, normalizePage(page), normalizeSize(size));
+    }
+
     public ProjectEntity getById(UUID companyId, UUID projectId) {
         return projectRepository.findActiveById(projectId)
                 .filter(p -> p.companyId.equals(companyId))
+                .orElseThrow(() -> new NotFoundException("Project '" + projectId + "' not found"));
+    }
+
+    public ProjectEntity getByIdForProjectOnly(UUID projectId) {
+        return projectRepository.findActiveById(projectId)
                 .orElseThrow(() -> new NotFoundException("Project '" + projectId + "' not found"));
     }
 
@@ -74,11 +92,26 @@ public class ProjectService {
     @Transactional
     public void delete(UUID companyId, UUID projectId) {
         var project = getById(companyId, projectId);
+        issueSoftDeleteHandler.softDeleteByProjectId(project.id);
+        projectStatusRepository.softDeleteActiveByProjectId(project.id);
         project.deletedAt = Instant.now();
     }
 
     public List<ProjectStatusEntity> getStatuses(UUID projectId) {
-        return projectStatusRepository.findByProjectId(projectId);
+        return projectStatusRepository.findActiveByProjectId(projectId);
+    }
+
+    public Map<UUID, List<ProjectStatusEntity>> getStatusesByProjectIds(List<UUID> projectIds) {
+        return projectStatusRepository.findActiveByProjectIds(projectIds).stream()
+                .collect(Collectors.groupingBy(s -> s.projectId));
+    }
+
+    private int normalizePage(int page) {
+        return Math.max(page, 0);
+    }
+
+    private int normalizeSize(int size) {
+        return Math.max(1, Math.min(size, 500));
     }
 
     private void seedDefaultStatuses(UUID projectId) {

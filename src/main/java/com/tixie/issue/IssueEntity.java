@@ -50,6 +50,9 @@ public class IssueEntity extends PanacheEntityBase {
     @Column(name = "updated_at", nullable = false)
     public Instant updatedAt;
 
+    @Column(name = "position", nullable = false)
+    public long position;
+
     @Column(name = "deleted_at")
     public Instant deletedAt;
 }
