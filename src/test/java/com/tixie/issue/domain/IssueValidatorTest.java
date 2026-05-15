@@ -97,7 +97,7 @@ class IssueValidatorTest {
     private void stubHappyPath() {
         when(projectRepository.findActiveById(PROJECT_ID)).thenReturn(Optional.of(project()));
         when(companyRepository.findActiveById(COMPANY_ID)).thenReturn(Optional.of(company()));
-        when(projectStatusRepository.findByIdAndProjectId(STATUS_ID, PROJECT_ID)).thenReturn(Optional.of(status()));
+        when(projectStatusRepository.findActiveByIdAndProjectId(STATUS_ID, PROJECT_ID)).thenReturn(Optional.of(status()));
     }
 
     // =========================================================
@@ -160,7 +160,7 @@ class IssueValidatorTest {
     void validateCreate_statusNotInProject_throwsValidationWithInvalidStatusCode() {
         when(projectRepository.findActiveById(PROJECT_ID)).thenReturn(Optional.of(project()));
         when(companyRepository.findActiveById(COMPANY_ID)).thenReturn(Optional.of(company()));
-        when(projectStatusRepository.findByIdAndProjectId(STATUS_ID, PROJECT_ID)).thenReturn(Optional.empty());
+        when(projectStatusRepository.findActiveByIdAndProjectId(STATUS_ID, PROJECT_ID)).thenReturn(Optional.empty());
 
         var ex = assertThrows(ValidationException.class,
                 () -> validator.validateCreate(createReq(EPIC, null), PROJECT_ID));
@@ -236,8 +236,8 @@ class IssueValidatorTest {
     void validatePatch_validStatusChange_passes() {
         var existing = issue(UUID.randomUUID(), PROJECT_ID, TASK);
         var req = new PatchIssueRequest();
-        req.statusId = STATUS_ID;
-        when(projectStatusRepository.findByIdAndProjectId(STATUS_ID, PROJECT_ID)).thenReturn(Optional.of(status()));
+        req.setStatusId(STATUS_ID);
+        when(projectStatusRepository.findActiveByIdAndProjectId(STATUS_ID, PROJECT_ID)).thenReturn(Optional.of(status()));
 
         assertDoesNotThrow(() -> validator.validatePatch(req, existing));
     }
@@ -246,7 +246,7 @@ class IssueValidatorTest {
     void validatePatch_story_withEpicParent_passes() {
         var existing = issue(UUID.randomUUID(), PROJECT_ID, STORY);
         var req = new PatchIssueRequest();
-        req.parentId = PARENT_ID;
+        req.setParentId(PARENT_ID);
         var parent = issue(PARENT_ID, PROJECT_ID, EPIC);
         when(issueRepository.findActiveById(PARENT_ID)).thenReturn(Optional.of(parent));
 
@@ -261,7 +261,7 @@ class IssueValidatorTest {
     void validatePatch_typeProvided_throwsValidation() {
         var existing = issue(UUID.randomUUID(), PROJECT_ID, STORY);
         var req = new PatchIssueRequest();
-        req.type = TASK;
+        req.setType(TASK);
 
         var ex = assertThrows(ValidationException.class, () -> validator.validatePatch(req, existing));
         assertEquals("IMMUTABLE_TYPE", ex.getCode());
@@ -272,8 +272,8 @@ class IssueValidatorTest {
     void validatePatch_statusNotInProject_throwsValidation() {
         var existing = issue(UUID.randomUUID(), PROJECT_ID, TASK);
         var req = new PatchIssueRequest();
-        req.statusId = STATUS_ID;
-        when(projectStatusRepository.findByIdAndProjectId(STATUS_ID, PROJECT_ID)).thenReturn(Optional.empty());
+        req.setStatusId(STATUS_ID);
+        when(projectStatusRepository.findActiveByIdAndProjectId(STATUS_ID, PROJECT_ID)).thenReturn(Optional.empty());
 
         var ex = assertThrows(ValidationException.class, () -> validator.validatePatch(req, existing));
         assertEquals("INVALID_STATUS", ex.getCode());
@@ -283,7 +283,7 @@ class IssueValidatorTest {
     void validatePatch_epicWithNewParent_throwsValidation_andIssueRepoNotCalled() {
         var existing = issue(UUID.randomUUID(), PROJECT_ID, EPIC);
         var req = new PatchIssueRequest();
-        req.parentId = PARENT_ID;
+        req.setParentId(PARENT_ID);
 
         var ex = assertThrows(ValidationException.class, () -> validator.validatePatch(req, existing));
         assertEquals("INVALID_PARENT", ex.getCode());
@@ -294,7 +294,7 @@ class IssueValidatorTest {
     void validatePatch_parentNotFound_throwsNotFound() {
         var existing = issue(UUID.randomUUID(), PROJECT_ID, STORY);
         var req = new PatchIssueRequest();
-        req.parentId = PARENT_ID;
+        req.setParentId(PARENT_ID);
         when(issueRepository.findActiveById(PARENT_ID)).thenReturn(Optional.empty());
 
         assertThrows(NotFoundException.class, () -> validator.validatePatch(req, existing));
@@ -304,7 +304,7 @@ class IssueValidatorTest {
     void validatePatch_parentInDifferentProject_throwsValidation() {
         var existing = issue(UUID.randomUUID(), PROJECT_ID, STORY);
         var req = new PatchIssueRequest();
-        req.parentId = PARENT_ID;
+        req.setParentId(PARENT_ID);
         var parent = issue(PARENT_ID, OTHER_PROJECT_ID, EPIC);
         when(issueRepository.findActiveById(PARENT_ID)).thenReturn(Optional.of(parent));
 
@@ -316,11 +316,74 @@ class IssueValidatorTest {
     void validatePatch_wrongParentType_throwsValidation() {
         var existing = issue(UUID.randomUUID(), PROJECT_ID, TASK);
         var req = new PatchIssueRequest();
-        req.parentId = PARENT_ID;
+        req.setParentId(PARENT_ID);
         var parent = issue(PARENT_ID, PROJECT_ID, EPIC); // TASK requires STORY parent
         when(issueRepository.findActiveById(PARENT_ID)).thenReturn(Optional.of(parent));
 
         var ex = assertThrows(ValidationException.class, () -> validator.validatePatch(req, existing));
         assertEquals("INVALID_PARENT", ex.getCode());
+    }
+
+    // =========================================================
+    // validateTransition
+    // =========================================================
+
+    @Test
+    void validateTransition_sameStatus_throwsValidation() {
+        var existing = issue(UUID.randomUUID(), PROJECT_ID, TASK);
+        existing.statusId = STATUS_ID;
+
+        var ex = assertThrows(ValidationException.class, () -> validator.validateTransition(STATUS_ID, existing));
+        assertEquals("NOOP_TRANSITION", ex.getCode());
+    }
+
+    @Test
+    void validateTransition_statusNotInProject_throwsValidation() {
+        var existing = issue(UUID.randomUUID(), PROJECT_ID, TASK);
+        existing.statusId = UUID.fromString("00000000-0000-0000-0000-000000000090");
+
+        when(projectStatusRepository.findActiveByIdAndProjectId(STATUS_ID, PROJECT_ID)).thenReturn(Optional.empty());
+
+        var ex = assertThrows(ValidationException.class, () -> validator.validateTransition(STATUS_ID, existing));
+        assertEquals("INVALID_STATUS", ex.getCode());
+    }
+
+    @Test
+    void validateTransition_validStatus_passes() {
+        var existing = issue(UUID.randomUUID(), PROJECT_ID, TASK);
+        existing.statusId = UUID.fromString("00000000-0000-0000-0000-000000000090");
+        when(projectStatusRepository.findActiveByIdAndProjectId(STATUS_ID, PROJECT_ID)).thenReturn(Optional.of(status()));
+
+        assertDoesNotThrow(() -> validator.validateTransition(STATUS_ID, existing));
+    }
+
+    @Test
+    void validatePatch_statusExplicitNull_throwsValidation() {
+        var existing = issue(UUID.randomUUID(), PROJECT_ID, TASK);
+        var req = new PatchIssueRequest();
+        req.setStatusId(null);
+
+        var ex = assertThrows(ValidationException.class, () -> validator.validatePatch(req, existing));
+        assertEquals("INVALID_STATUS", ex.getCode());
+    }
+
+    @Test
+    void validatePatch_priorityExplicitNull_throwsValidation() {
+        var existing = issue(UUID.randomUUID(), PROJECT_ID, TASK);
+        var req = new PatchIssueRequest();
+        req.setPriority(null);
+
+        var ex = assertThrows(ValidationException.class, () -> validator.validatePatch(req, existing));
+        assertEquals("INVALID_PRIORITY", ex.getCode());
+    }
+
+    @Test
+    void validatePatch_titleExplicitNull_throwsValidation() {
+        var existing = issue(UUID.randomUUID(), PROJECT_ID, TASK);
+        var req = new PatchIssueRequest();
+        req.setTitle(null);
+
+        var ex = assertThrows(ValidationException.class, () -> validator.validatePatch(req, existing));
+        assertEquals("INVALID_TITLE", ex.getCode());
     }
 }

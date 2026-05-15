@@ -4,11 +4,14 @@ import com.tixie.common.exception.ValidationException;
 import com.tixie.issue.IssueEntity;
 import com.tixie.issue.IssueRepository;
 import com.tixie.issue.api.dto.CreateIssueRequest;
+import com.tixie.issue.api.dto.MoveIssueRequest;
 import com.tixie.issue.api.dto.PatchIssueRequest;
 import com.tixie.issue.domain.model.IssuePriority;
 import com.tixie.issue.domain.model.IssueType;
 import com.tixie.project.ProjectEntity;
 import com.tixie.project.ProjectRepository;
+import com.tixie.project.ProjectStatusEntity;
+import com.tixie.project.ProjectStatusRepository;
 import jakarta.ws.rs.NotFoundException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +40,7 @@ class IssueServiceTest {
 
     @Mock IssueRepository issueRepository;
     @Mock ProjectRepository projectRepository;
+    @Mock ProjectStatusRepository projectStatusRepository;
     @Mock IssueValidator validator;
     @Mock IssueKeyGenerator keyGenerator;
     @Mock IssueSoftDeleteHandler softDeleteHandler;
@@ -64,6 +68,7 @@ class IssueServiceTest {
         e.statusId = STATUS_ID;
         e.createdAt = Instant.now();
         e.updatedAt = Instant.now();
+        e.position = 1;
         return e;
     }
 
@@ -86,10 +91,12 @@ class IssueServiceTest {
     void create_withExplicitPriority_persistsWithThatPriority() {
         var req = createReq(STORY, IssuePriority.HIGH);
         when(keyGenerator.generate(PROJECT_ID)).thenReturn("PRJ-1");
+        when(issueRepository.nextPosition(PROJECT_ID, STATUS_ID)).thenReturn(3L);
 
         var result = issueService.create(PROJECT_ID, req);
 
         assertEquals(IssuePriority.HIGH, result.priority);
+        assertEquals(3L, result.position);
         verify(issueRepository).persist(result);
     }
 
@@ -214,19 +221,19 @@ class IssueServiceTest {
         var existing = issue(ISSUE_ID, PROJECT_ID);
         when(issueRepository.findActiveById(ISSUE_ID)).thenReturn(Optional.of(existing));
         var req = new PatchIssueRequest();
-        req.title = "Updated Title";
-        req.description = "Updated desc";
-        req.priority = IssuePriority.CRITICAL;
-        req.statusId = UUID.randomUUID();
-        req.parentId = UUID.randomUUID();
+        req.setTitle("Updated Title");
+        req.setDescription("Updated desc");
+        req.setPriority(IssuePriority.CRITICAL);
+        req.setStatusId(UUID.randomUUID());
+        req.setParentId(UUID.randomUUID());
 
         var result = issueService.patch(PROJECT_ID, ISSUE_ID, req);
 
         assertEquals("Updated Title", result.title);
         assertEquals("Updated desc", result.description);
         assertEquals(IssuePriority.CRITICAL, result.priority);
-        assertEquals(req.statusId, result.statusId);
-        assertEquals(req.parentId, result.parentId);
+        assertEquals(req.getStatusId(), result.statusId);
+        assertEquals(req.getParentId(), result.parentId);
     }
 
     @Test
@@ -282,13 +289,29 @@ class IssueServiceTest {
         var existing = issue(ISSUE_ID, PROJECT_ID);
         when(issueRepository.findActiveById(ISSUE_ID)).thenReturn(Optional.of(existing));
         var req = new PatchIssueRequest();
-        req.title = "Rejected Title";
+        req.setTitle("Rejected Title");
         doThrow(new ValidationException("INVALID_PARENT", "bad parent"))
                 .when(validator).validatePatch(req, existing);
 
         assertThrows(ValidationException.class,
                 () -> issueService.patch(PROJECT_ID, ISSUE_ID, req));
         assertEquals("Original Title", existing.title);
+    }
+
+    @Test
+    void patch_explicitNullDescriptionAndParent_clearsBoth() {
+        var existing = issue(ISSUE_ID, PROJECT_ID);
+        existing.description = "Has description";
+        existing.parentId = PARENT_ID;
+        when(issueRepository.findActiveById(ISSUE_ID)).thenReturn(Optional.of(existing));
+        var req = new PatchIssueRequest();
+        req.setDescription(null);
+        req.setParentId(null);
+
+        var result = issueService.patch(PROJECT_ID, ISSUE_ID, req);
+
+        assertNull(result.description);
+        assertNull(result.parentId);
     }
 
     // =========================================================
@@ -310,5 +333,132 @@ class IssueServiceTest {
 
         assertThrows(NotFoundException.class, () -> issueService.delete(PROJECT_ID, ISSUE_ID));
         verifyNoInteractions(softDeleteHandler);
+    }
+
+    // =========================================================
+    // transition
+    // =========================================================
+
+    @Test
+    void transition_valid_updatesStatusAndUpdatedAt() {
+        var existing = issue(ISSUE_ID, PROJECT_ID);
+        UUID targetStatus = UUID.fromString("00000000-0000-0000-0000-000000000099");
+        when(issueRepository.findActiveById(ISSUE_ID)).thenReturn(Optional.of(existing));
+        when(issueRepository.nextPosition(PROJECT_ID, targetStatus)).thenReturn(4L);
+
+        var before = Instant.now();
+        var result = issueService.transition(PROJECT_ID, ISSUE_ID, targetStatus);
+
+        assertEquals(targetStatus, result.statusId);
+        assertEquals(4L, result.position);
+        assertFalse(result.updatedAt.isBefore(before));
+        verify(validator).validateTransition(targetStatus, existing);
+    }
+
+    @Test
+    void transition_issueNotFound_throwsNotFound() {
+        UUID targetStatus = UUID.fromString("00000000-0000-0000-0000-000000000099");
+        when(issueRepository.findActiveById(ISSUE_ID)).thenReturn(Optional.empty());
+
+        assertThrows(NotFoundException.class, () -> issueService.transition(PROJECT_ID, ISSUE_ID, targetStatus));
+        verify(validator, never()).validateTransition(any(), any());
+    }
+
+    @Test
+    void move_acrossStatuses_reindexesSourceAndTarget() {
+        var moving = issue(ISSUE_ID, PROJECT_ID);
+        moving.statusId = STATUS_ID;
+        moving.position = 1;
+        UUID targetStatus = UUID.fromString("00000000-0000-0000-0000-000000000099");
+
+        var sourceOther = issue(UUID.randomUUID(), PROJECT_ID);
+        sourceOther.statusId = STATUS_ID;
+        sourceOther.position = 2;
+
+        var targetA = issue(UUID.randomUUID(), PROJECT_ID);
+        targetA.statusId = targetStatus;
+        targetA.position = 1;
+        var targetB = issue(UUID.randomUUID(), PROJECT_ID);
+        targetB.statusId = targetStatus;
+        targetB.position = 2;
+
+        when(issueRepository.findActiveById(ISSUE_ID)).thenReturn(Optional.of(moving));
+        when(issueRepository.findActiveByProjectIdAndStatusId(PROJECT_ID, targetStatus)).thenReturn(List.of(targetA, targetB));
+        when(issueRepository.findActiveByProjectIdAndStatusId(PROJECT_ID, STATUS_ID)).thenReturn(List.of(moving, sourceOther));
+
+        var req = new MoveIssueRequest();
+        req.targetStatusId = targetStatus;
+        req.targetPosition = 1;
+
+        var result = issueService.move(PROJECT_ID, ISSUE_ID, req);
+
+        assertEquals(targetStatus, result.statusId);
+        assertEquals(1L, moving.position);
+        assertEquals(2L, targetA.position);
+        assertEquals(3L, targetB.position);
+        assertEquals(1L, sourceOther.position);
+        verify(validator).validateStatusBelongsToProject(targetStatus, PROJECT_ID);
+    }
+
+    @Test
+    void move_withinSameStatus_reordersIssues() {
+        var moving = issue(ISSUE_ID, PROJECT_ID);
+        moving.statusId = STATUS_ID;
+        moving.position = 1;
+        var a = issue(UUID.randomUUID(), PROJECT_ID);
+        a.statusId = STATUS_ID;
+        a.position = 2;
+        var b = issue(UUID.randomUUID(), PROJECT_ID);
+        b.statusId = STATUS_ID;
+        b.position = 3;
+
+        when(issueRepository.findActiveById(ISSUE_ID)).thenReturn(Optional.of(moving));
+        when(issueRepository.findActiveByProjectIdAndStatusId(PROJECT_ID, STATUS_ID)).thenReturn(List.of(moving, a, b));
+
+        var req = new MoveIssueRequest();
+        req.targetStatusId = STATUS_ID;
+        req.targetPosition = 3;
+
+        issueService.move(PROJECT_ID, ISSUE_ID, req);
+
+        assertEquals(1L, a.position);
+        assertEquals(2L, b.position);
+        assertEquals(3L, moving.position);
+    }
+
+    @Test
+    void board_groupsIssuesByStatusAndSortsByPosition() {
+        var project = project();
+        var todo = new ProjectStatusEntity();
+        todo.id = UUID.fromString("00000000-0000-0000-0000-000000000090");
+        todo.projectId = PROJECT_ID;
+        todo.name = "To Do";
+        todo.displayOrder = 1;
+        todo.isDefault = true;
+        var done = new ProjectStatusEntity();
+        done.id = UUID.fromString("00000000-0000-0000-0000-000000000091");
+        done.projectId = PROJECT_ID;
+        done.name = "Done";
+        done.displayOrder = 2;
+        done.isDefault = false;
+
+        var i1 = issue(UUID.randomUUID(), PROJECT_ID);
+        i1.statusId = done.id;
+        i1.position = 2;
+        var i2 = issue(UUID.randomUUID(), PROJECT_ID);
+        i2.statusId = done.id;
+        i2.position = 1;
+
+        when(projectRepository.findActiveById(PROJECT_ID)).thenReturn(Optional.of(project));
+        when(projectStatusRepository.findActiveByProjectId(PROJECT_ID)).thenReturn(List.of(done, todo));
+        when(issueRepository.findActiveByProjectId(PROJECT_ID)).thenReturn(List.of(i1, i2));
+
+        var board = issueService.board(PROJECT_ID);
+
+        assertEquals(PROJECT_ID, board.projectId);
+        assertEquals("To Do", board.columns.get(0).statusName());
+        assertEquals("Done", board.columns.get(1).statusName());
+        assertEquals(i2.id, board.columns.get(1).issues().get(0).id());
+        assertEquals(i1.id, board.columns.get(1).issues().get(1).id());
     }
 }

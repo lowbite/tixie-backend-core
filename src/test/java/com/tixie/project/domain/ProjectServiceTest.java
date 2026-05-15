@@ -3,6 +3,7 @@ package com.tixie.project.domain;
 import com.tixie.common.exception.ValidationException;
 import com.tixie.company.CompanyEntity;
 import com.tixie.company.CompanyRepository;
+import com.tixie.issue.domain.IssueSoftDeleteHandler;
 import com.tixie.project.ProjectEntity;
 import com.tixie.project.ProjectRepository;
 import com.tixie.project.ProjectStatusEntity;
@@ -37,6 +38,7 @@ class ProjectServiceTest {
     @Mock ProjectStatusRepository  projectStatusRepository;
     @Mock CompanyRepository        companyRepository;
     @Mock ProjectValidator         validator;
+    @Mock IssueSoftDeleteHandler   issueSoftDeleteHandler;
 
     @InjectMocks ProjectService projectService;
 
@@ -294,6 +296,8 @@ class ProjectServiceTest {
 
         assertNotNull(entity.deletedAt);
         assertFalse(entity.deletedAt.isBefore(before));
+        verify(issueSoftDeleteHandler).softDeleteByProjectId(PROJECT_ID);
+        verify(projectStatusRepository).softDeleteActiveByProjectId(PROJECT_ID);
     }
 
     @Test
@@ -311,11 +315,11 @@ class ProjectServiceTest {
     @Test
     void getStatuses_delegatesToRepository() {
         var statuses = List.of(new ProjectStatusEntity(), new ProjectStatusEntity());
-        when(projectStatusRepository.findByProjectId(PROJECT_ID)).thenReturn(statuses);
+        when(projectStatusRepository.findActiveByProjectId(PROJECT_ID)).thenReturn(statuses);
 
         var result = projectService.getStatuses(PROJECT_ID);
 
         assertSame(statuses, result);
-        verify(projectStatusRepository).findByProjectId(PROJECT_ID);
+        verify(projectStatusRepository).findActiveByProjectId(PROJECT_ID);
     }
 }

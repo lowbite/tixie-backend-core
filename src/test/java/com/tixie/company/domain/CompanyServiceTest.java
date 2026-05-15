@@ -4,6 +4,9 @@ import com.tixie.company.CompanyEntity;
 import com.tixie.company.CompanyRepository;
 import com.tixie.company.api.dto.CreateCompanyRequest;
 import com.tixie.company.api.dto.UpdateCompanyRequest;
+import com.tixie.issue.domain.IssueSoftDeleteHandler;
+import com.tixie.project.ProjectRepository;
+import com.tixie.project.ProjectStatusRepository;
 import jakarta.ws.rs.NotFoundException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +29,9 @@ class CompanyServiceTest {
     static final UUID COMPANY_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     @Mock CompanyRepository companyRepository;
+    @Mock IssueSoftDeleteHandler issueSoftDeleteHandler;
+    @Mock ProjectStatusRepository projectStatusRepository;
+    @Mock ProjectRepository projectRepository;
 
     @InjectMocks CompanyService companyService;
 
@@ -173,6 +179,9 @@ class CompanyServiceTest {
 
         assertNotNull(entity.deletedAt);
         assertFalse(entity.deletedAt.isBefore(before));
+        verify(issueSoftDeleteHandler).softDeleteByCompanyId(COMPANY_ID);
+        verify(projectStatusRepository).softDeleteActiveByCompanyId(COMPANY_ID);
+        verify(projectRepository).softDeleteActiveByCompanyId(COMPANY_ID);
     }
 
     @Test
@@ -180,5 +189,6 @@ class CompanyServiceTest {
         when(companyRepository.findActiveById(COMPANY_ID)).thenReturn(Optional.empty());
 
         assertThrows(NotFoundException.class, () -> companyService.delete(COMPANY_ID));
+        verifyNoInteractions(issueSoftDeleteHandler, projectStatusRepository, projectRepository);
     }
 }
