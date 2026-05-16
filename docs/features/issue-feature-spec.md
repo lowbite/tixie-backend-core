@@ -214,7 +214,7 @@ WHERE id IN (SELECT id FROM descendants);
 
 ## 4. REST API
 
-Base path: `/api/v1/projects/{projectId}/issues`
+Base path: `/projects/{projectId}/issues`
 
 | Method   | Path          | Body                 | Success | Error codes   |
 |----------|---------------|----------------------|---------|---------------|

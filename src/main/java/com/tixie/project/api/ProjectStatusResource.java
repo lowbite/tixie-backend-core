@@ -1,11 +1,14 @@
 package com.tixie.project.api;
 
+import com.tixie.auth.UserRole;
+import com.tixie.auth.domain.CurrentUser;
 import com.tixie.project.ProjectStatusEntity;
 import com.tixie.project.api.dto.CreateProjectStatusRequest;
 import com.tixie.project.api.dto.PatchProjectStatusRequest;
 import com.tixie.project.api.dto.ProjectStatusResponse;
 import com.tixie.project.api.dto.ReorderProjectStatusesRequest;
 import com.tixie.project.domain.ProjectStatusService;
+import io.quarkus.security.Authenticated;
 import io.smallrye.common.annotation.RunOnVirtualThread;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -19,19 +22,24 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import java.util.List;
 import java.util.UUID;
 
-@Path("/api/v1/projects/{projectId}/statuses")
+@Path("/projects/{projectId}/statuses")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Project Statuses")
 @RunOnVirtualThread
+@Authenticated
 public class ProjectStatusResource {
 
     @Inject
     ProjectStatusService projectStatusService;
 
+    @Inject
+    CurrentUser currentUser;
+
     @GET
     @Operation(summary = "List active statuses for project")
     public List<ProjectStatusResponse> list(@PathParam("projectId") UUID projectId) {
+        currentUser.requireProject(projectId);
         return projectStatusService.list(projectId).stream().map(this::toResponse).toList();
     }
 
@@ -40,6 +48,8 @@ public class ProjectStatusResource {
     @APIResponse(responseCode = "201", description = "Status created")
     public Response create(@PathParam("projectId") UUID projectId,
                            @Valid CreateProjectStatusRequest req) {
+        var user = currentUser.requireProject(projectId);
+        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         var created = projectStatusService.create(projectId, req.name, req.displayOrder, req.isDefault);
         return Response.status(Response.Status.CREATED).entity(toResponse(created)).build();
     }
@@ -50,6 +60,8 @@ public class ProjectStatusResource {
     public ProjectStatusResponse patch(@PathParam("projectId") UUID projectId,
                                        @PathParam("statusId") UUID statusId,
                                        @Valid PatchProjectStatusRequest req) {
+        var user = currentUser.requireProject(projectId);
+        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         return toResponse(projectStatusService.patch(projectId, statusId, req.name, req.displayOrder, req.isDefault));
     }
 
@@ -58,6 +70,8 @@ public class ProjectStatusResource {
     @Operation(summary = "Reorder project statuses")
     public List<ProjectStatusResponse> reorder(@PathParam("projectId") UUID projectId,
                                                @Valid ReorderProjectStatusesRequest req) {
+        var user = currentUser.requireProject(projectId);
+        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         projectStatusService.reorder(projectId, req.statusIds);
         return projectStatusService.list(projectId).stream().map(this::toResponse).toList();
     }
@@ -68,6 +82,8 @@ public class ProjectStatusResource {
     public Response delete(@PathParam("projectId") UUID projectId,
                            @PathParam("statusId") UUID statusId,
                            @QueryParam("moveIssuesTo") UUID moveIssuesTo) {
+        var user = currentUser.requireProject(projectId);
+        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         projectStatusService.delete(projectId, statusId, moveIssuesTo);
         return Response.noContent().build();
     }

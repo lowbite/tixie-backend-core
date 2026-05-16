@@ -1,5 +1,8 @@
 package com.tixie.project.api;
 
+import com.tixie.auth.UserEntity;
+import com.tixie.auth.UserRole;
+import com.tixie.auth.domain.CurrentUser;
 import com.tixie.project.ProjectEntity;
 import com.tixie.project.ProjectStatusEntity;
 import com.tixie.project.api.dto.CreateProjectRequest;
@@ -20,13 +23,17 @@ class ProjectResourceTest {
     @Test
     void createAndList_work() {
         var service = mock(ProjectService.class);
+        var currentUser = mock(CurrentUser.class);
         var resource = new ProjectResource();
         resource.projectService = service;
+        resource.currentUser = currentUser;
         UUID companyId = UUID.randomUUID();
+        var user = user(companyId, UserRole.ADMIN);
         var req = new CreateProjectRequest();
         req.name = "P";
         req.key = "PR";
         var project = project(companyId);
+        when(currentUser.requireCompany(companyId)).thenReturn(user);
         when(service.create(companyId, req)).thenReturn(project);
         when(service.getStatuses(project.id)).thenReturn(List.of(status(project.id)));
         when(service.list(companyId)).thenReturn(List.of(project));
@@ -39,11 +46,15 @@ class ProjectResourceTest {
     @Test
     void getUpdateDelete_delegate() {
         var service = mock(ProjectService.class);
+        var currentUser = mock(CurrentUser.class);
         var resource = new ProjectResource();
         resource.projectService = service;
+        resource.currentUser = currentUser;
         UUID companyId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         var project = project(companyId);
+        var user = user(companyId, UserRole.OWNER);
+        when(currentUser.requireCompany(companyId)).thenReturn(user);
         when(service.getById(companyId, projectId)).thenReturn(project);
         when(service.getStatuses(project.id)).thenReturn(List.of());
         when(service.update(eq(companyId), eq(projectId), any(UpdateProjectRequest.class))).thenReturn(project);
@@ -52,6 +63,14 @@ class ProjectResourceTest {
         assertNotNull(resource.update(companyId, projectId, new UpdateProjectRequest()));
         assertEquals(204, resource.delete(companyId, projectId).getStatus());
         verify(service).delete(companyId, projectId);
+    }
+
+    private UserEntity user(UUID companyId, UserRole role) {
+        var user = new UserEntity();
+        user.id = UUID.randomUUID();
+        user.companyId = companyId;
+        user.role = role;
+        return user;
     }
 
     private ProjectEntity project(UUID companyId) {

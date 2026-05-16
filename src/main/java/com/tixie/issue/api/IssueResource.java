@@ -1,5 +1,7 @@
 package com.tixie.issue.api;
 
+import com.tixie.auth.UserRole;
+import com.tixie.auth.domain.CurrentUser;
 import com.tixie.issue.IssueEntity;
 import com.tixie.issue.api.dto.CreateIssueRequest;
 import com.tixie.issue.api.dto.IssueResponse;
@@ -10,6 +12,7 @@ import com.tixie.issue.api.dto.TransitionIssueRequest;
 import com.tixie.issue.domain.IssueService;
 import com.tixie.project.ProjectStatusEntity;
 import com.tixie.project.ProjectStatusRepository;
+import io.quarkus.security.Authenticated;
 import io.smallrye.common.annotation.RunOnVirtualThread;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -26,15 +29,19 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-@Path("/api/v1/projects/{projectId}/issues")
+@Path("/projects/{projectId}/issues")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Issues")
 @RunOnVirtualThread
+@Authenticated
 public class IssueResource {
 
     @Inject
     IssueService issueService;
+
+    @Inject
+    CurrentUser currentUser;
 
     @Inject
     ProjectStatusRepository projectStatusRepository;
@@ -45,6 +52,8 @@ public class IssueResource {
     @APIResponse(responseCode = "400", description = "Validation error")
     @APIResponse(responseCode = "404", description = "Project or referenced entity not found")
     public Response create(@PathParam("projectId") UUID projectId, @Valid CreateIssueRequest req) {
+        var user = currentUser.requireProject(projectId);
+        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER);
         var issue = issueService.create(projectId, req);
         return Response.status(Response.Status.CREATED).entity(toResponse(issue)).build();
     }
@@ -56,10 +65,12 @@ public class IssueResource {
     public List<IssueResponse> list(@PathParam("projectId") UUID projectId,
                                     @QueryParam("page") @DefaultValue("0") int page,
                                     @QueryParam("size") @DefaultValue("100") int size) {
+        currentUser.requireProject(projectId);
         return mapIssues(issueService.list(projectId, page, size));
     }
 
     public List<IssueResponse> list(UUID projectId) {
+        currentUser.requireProject(projectId);
         return issueService.list(projectId).stream().map(this::toResponse).toList();
     }
 
@@ -78,6 +89,7 @@ public class IssueResource {
     @APIResponse(responseCode = "404", description = "Issue not found")
     public IssueResponse getById(@PathParam("projectId") UUID projectId,
                                  @PathParam("issueId") UUID issueId) {
+        currentUser.requireProject(projectId);
         return toResponse(issueService.getById(projectId, issueId));
     }
 
@@ -90,6 +102,8 @@ public class IssueResource {
     public IssueResponse patch(@PathParam("projectId") UUID projectId,
                                @PathParam("issueId") UUID issueId,
                                @Valid PatchIssueRequest req) {
+        var user = currentUser.requireProject(projectId);
+        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER);
         return toResponse(issueService.patch(projectId, issueId, req));
     }
 
@@ -100,6 +114,8 @@ public class IssueResource {
     @APIResponse(responseCode = "404", description = "Issue not found")
     public Response delete(@PathParam("projectId") UUID projectId,
                            @PathParam("issueId") UUID issueId) {
+        var user = currentUser.requireProject(projectId);
+        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         issueService.delete(projectId, issueId);
         return Response.noContent().build();
     }
@@ -108,6 +124,7 @@ public class IssueResource {
     @Path("/board")
     @Operation(summary = "Get project board with columns and ordered issues")
     public ProjectBoardResponse board(@PathParam("projectId") UUID projectId) {
+        currentUser.requireProject(projectId);
         return issueService.board(projectId);
     }
 
@@ -120,6 +137,8 @@ public class IssueResource {
     public IssueResponse transition(@PathParam("projectId") UUID projectId,
                                     @PathParam("issueId") UUID issueId,
                                     @Valid TransitionIssueRequest req) {
+        var user = currentUser.requireProject(projectId);
+        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER);
         return toResponse(issueService.transition(projectId, issueId, req.targetStatusId));
     }
 
@@ -129,6 +148,8 @@ public class IssueResource {
     public IssueResponse move(@PathParam("projectId") UUID projectId,
                               @PathParam("issueId") UUID issueId,
                               @Valid MoveIssueRequest req) {
+        var user = currentUser.requireProject(projectId);
+        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER);
         return toResponse(issueService.move(projectId, issueId, req));
     }
 

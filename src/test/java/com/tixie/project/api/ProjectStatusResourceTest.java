@@ -1,5 +1,8 @@
 package com.tixie.project.api;
 
+import com.tixie.auth.UserEntity;
+import com.tixie.auth.UserRole;
+import com.tixie.auth.domain.CurrentUser;
 import com.tixie.project.ProjectStatusEntity;
 import com.tixie.project.api.dto.CreateProjectStatusRequest;
 import com.tixie.project.api.dto.PatchProjectStatusRequest;
@@ -19,11 +22,14 @@ class ProjectStatusResourceTest {
     @Test
     void crudEndpoints_delegate() {
         var service = mock(ProjectStatusService.class);
+        var currentUser = mock(CurrentUser.class);
         var resource = new ProjectStatusResource();
         resource.projectStatusService = service;
+        resource.currentUser = currentUser;
         UUID projectId = UUID.randomUUID();
         UUID statusId = UUID.randomUUID();
         var entity = status(projectId);
+        when(currentUser.requireProject(projectId)).thenReturn(user(UserRole.ADMIN));
 
         when(service.list(projectId)).thenReturn(List.of(entity));
         when(service.create(eq(projectId), anyString(), any(), any())).thenReturn(entity);
@@ -56,5 +62,13 @@ class ProjectStatusResourceTest {
         s.displayOrder = 1;
         s.isDefault = true;
         return s;
+    }
+
+    private UserEntity user(UserRole role) {
+        var user = new UserEntity();
+        user.id = UUID.randomUUID();
+        user.companyId = UUID.randomUUID();
+        user.role = role;
+        return user;
     }
 }

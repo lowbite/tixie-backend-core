@@ -1,11 +1,14 @@
 package com.tixie.project.api;
 
+import com.tixie.auth.UserRole;
+import com.tixie.auth.domain.CurrentUser;
 import com.tixie.project.ProjectEntity;
 import com.tixie.project.ProjectStatusEntity;
 import com.tixie.project.api.dto.CreateProjectRequest;
 import com.tixie.project.api.dto.ProjectResponse;
 import com.tixie.project.api.dto.UpdateProjectRequest;
 import com.tixie.project.domain.ProjectService;
+import io.quarkus.security.Authenticated;
 import io.smallrye.common.annotation.RunOnVirtualThread;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -20,15 +23,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-@Path("/api/v1/companies/{companyId}/projects")
+@Path("/companies/{companyId}/projects")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Projects")
 @RunOnVirtualThread
+@Authenticated
 public class ProjectResource {
 
     @Inject
     ProjectService projectService;
+
+    @Inject
+    CurrentUser currentUser;
 
     @POST
     @Operation(summary = "Create a project")
@@ -37,6 +44,8 @@ public class ProjectResource {
     @APIResponse(responseCode = "404", description = "Company not found")
     public Response create(@PathParam("companyId") UUID companyId,
                            @Valid CreateProjectRequest req) {
+        var user = currentUser.requireCompany(companyId);
+        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         var project = projectService.create(companyId, req);
         return Response.status(Response.Status.CREATED).entity(toResponse(project)).build();
     }
@@ -48,12 +57,14 @@ public class ProjectResource {
     public List<ProjectResponse> list(@PathParam("companyId") UUID companyId,
                                       @QueryParam("page") @DefaultValue("0") int page,
                                       @QueryParam("size") @DefaultValue("100") int size) {
+        currentUser.requireCompany(companyId);
         var projects = projectService.list(companyId, page, size);
         var statusesByProjectId = projectService.getStatusesByProjectIds(projects.stream().map(p -> p.id).toList());
         return projects.stream().map(project -> toResponse(project, statusesByProjectId)).toList();
     }
 
     public List<ProjectResponse> list(UUID companyId) {
+        currentUser.requireCompany(companyId);
         return projectService.list(companyId).stream().map(this::toResponse).toList();
     }
 
@@ -64,6 +75,7 @@ public class ProjectResource {
     @APIResponse(responseCode = "404", description = "Project not found")
     public ProjectResponse getById(@PathParam("companyId") UUID companyId,
                                    @PathParam("projectId") UUID projectId) {
+        currentUser.requireCompany(companyId);
         return toResponse(projectService.getById(companyId, projectId));
     }
 
@@ -76,6 +88,8 @@ public class ProjectResource {
     public ProjectResponse update(@PathParam("companyId") UUID companyId,
                                   @PathParam("projectId") UUID projectId,
                                   @Valid UpdateProjectRequest req) {
+        var user = currentUser.requireCompany(companyId);
+        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         return toResponse(projectService.update(companyId, projectId, req));
     }
 
@@ -86,6 +100,8 @@ public class ProjectResource {
     @APIResponse(responseCode = "404", description = "Project not found")
     public Response delete(@PathParam("companyId") UUID companyId,
                            @PathParam("projectId") UUID projectId) {
+        var user = currentUser.requireCompany(companyId);
+        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         projectService.delete(companyId, projectId);
         return Response.noContent().build();
     }

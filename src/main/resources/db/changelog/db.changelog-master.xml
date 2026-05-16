@@ -12,5 +12,6 @@
     <include file="db/changelog/006-add-deleted-at-to-project-statuses.xml"/>
     <include file="db/changelog/007-add-issue-position.xml"/>
     <include file="db/changelog/008-performance-indexes-and-status-constraints.xml"/>
+    <include file="db/changelog/009-create-users-and-company-invites.xml"/>
 
 </databaseChangeLog>

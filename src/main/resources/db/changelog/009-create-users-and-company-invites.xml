@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                       http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="009-create-users" author="dev">
+        <createTable tableName="users">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true"/>
+            </column>
+            <column name="company_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_users_company" references="companies(id)"/>
+            </column>
+            <column name="keycloak_subject" type="VARCHAR(255)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uk_users_keycloak_subject"/>
+            </column>
+            <column name="email" type="VARCHAR(320)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="display_name" type="VARCHAR(255)"/>
+            <column name="role" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="disabled_at" type="TIMESTAMP"/>
+        </createTable>
+
+        <createIndex tableName="users" indexName="idx_users_company_id">
+            <column name="company_id"/>
+        </createIndex>
+
+        <createIndex tableName="users" indexName="idx_users_email_lower">
+            <column name="lower(email)" computed="true"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="009-create-company-invites" author="dev">
+        <createTable tableName="company_invites">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true"/>
+            </column>
+            <column name="company_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_company_invites_company" references="companies(id)"/>
+            </column>
+            <column name="email" type="VARCHAR(320)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="role" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="token_hash" type="VARCHAR(64)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uk_company_invites_token_hash"/>
+            </column>
+            <column name="expires_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="accepted_at" type="TIMESTAMP"/>
+            <column name="revoked_at" type="TIMESTAMP"/>
+            <column name="created_by_user_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_company_invites_created_by" references="users(id)"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex tableName="company_invites" indexName="idx_company_invites_company_id">
+            <column name="company_id"/>
+        </createIndex>
+
+        <createIndex tableName="company_invites" indexName="idx_company_invites_email_lower">
+            <column name="lower(email)" computed="true"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,7 +1,9 @@
 package com.tixie.company.api;
 
+import com.tixie.auth.UserEntity;
+import com.tixie.auth.UserRole;
+import com.tixie.auth.domain.CurrentUser;
 import com.tixie.company.CompanyEntity;
-import com.tixie.company.api.dto.CreateCompanyRequest;
 import com.tixie.company.api.dto.UpdateCompanyRequest;
 import com.tixie.company.domain.CompanyService;
 import jakarta.ws.rs.core.Response;
@@ -17,36 +19,30 @@ import static org.mockito.Mockito.*;
 class CompanyResourceTest {
 
     @Test
-    void create_returns201WithBody() {
+    void list_mapsCurrentUsersCompany() {
         var service = mock(CompanyService.class);
+        var currentUser = mock(CurrentUser.class);
         var resource = new CompanyResource();
         resource.companyService = service;
-        var req = new CreateCompanyRequest();
-        req.name = "Acme";
+        resource.currentUser = currentUser;
         var entity = entity();
-        when(service.create(req)).thenReturn(entity);
+        var user = user(entity.id, UserRole.VIEWER);
+        when(currentUser.require()).thenReturn(user);
+        when(service.getById(entity.id)).thenReturn(entity);
 
-        Response response = resource.create(req);
-
-        assertEquals(201, response.getStatus());
-        assertNotNull(response.getEntity());
-    }
-
-    @Test
-    void list_mapsEntities() {
-        var service = mock(CompanyService.class);
-        var resource = new CompanyResource();
-        resource.companyService = service;
-        when(service.list()).thenReturn(List.of(entity()));
         assertEquals(1, resource.list().size());
     }
 
     @Test
     void getUpdateDelete_delegate() {
         var service = mock(CompanyService.class);
+        var currentUser = mock(CurrentUser.class);
         var resource = new CompanyResource();
         resource.companyService = service;
+        resource.currentUser = currentUser;
         UUID id = UUID.randomUUID();
+        var user = user(id, UserRole.OWNER);
+        when(currentUser.requireCompany(id)).thenReturn(user);
         when(service.getById(id)).thenReturn(entity());
         when(service.update(eq(id), any(UpdateCompanyRequest.class))).thenReturn(entity());
 
@@ -56,11 +52,36 @@ class CompanyResourceTest {
         verify(service).delete(id);
     }
 
+    @Test
+    void update_rejectsViewerRole() {
+        var service = mock(CompanyService.class);
+        var currentUser = mock(CurrentUser.class);
+        var resource = new CompanyResource();
+        resource.companyService = service;
+        resource.currentUser = currentUser;
+        UUID id = UUID.randomUUID();
+        var viewer = user(id, UserRole.VIEWER);
+        when(currentUser.requireCompany(id)).thenReturn(viewer);
+        doThrow(new jakarta.ws.rs.ForbiddenException("Insufficient role"))
+                .when(currentUser).requireAnyRole(eq(viewer), eq(UserRole.OWNER), eq(UserRole.ADMIN));
+
+        assertThrows(jakarta.ws.rs.ForbiddenException.class,
+                () -> resource.update(id, new UpdateCompanyRequest()));
+    }
+
     private CompanyEntity entity() {
         var e = new CompanyEntity();
         e.id = UUID.randomUUID();
         e.name = "Acme";
         e.createdAt = Instant.now();
         return e;
+    }
+
+    private UserEntity user(UUID companyId, UserRole role) {
+        var user = new UserEntity();
+        user.id = UUID.randomUUID();
+        user.companyId = companyId;
+        user.role = role;
+        return user;
     }
 }
