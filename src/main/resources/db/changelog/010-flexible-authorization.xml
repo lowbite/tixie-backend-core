@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                       http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="010-add-project-access-mode" author="dev">
+        <addColumn tableName="projects">
+            <column name="access_mode" type="VARCHAR(32)" defaultValue="COMPANY">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="010-create-groups" author="dev">
+        <createTable tableName="groups">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true"/>
+            </column>
+            <column name="company_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_groups_company" references="companies(id)"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_by_user_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_groups_created_by" references="users(id)"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="deleted_at" type="TIMESTAMP"/>
+        </createTable>
+
+        <createIndex tableName="groups" indexName="idx_groups_company_id">
+            <column name="company_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="010-create-group-members" author="dev">
+        <createTable tableName="group_members">
+            <column name="group_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_group_members_group" references="groups(id)"/>
+            </column>
+            <column name="user_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_group_members_user" references="users(id)"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey tableName="group_members"
+                       columnNames="group_id,user_id"
+                       constraintName="pk_group_members"/>
+    </changeSet>
+
+    <changeSet id="010-create-project-members" author="dev">
+        <createTable tableName="project_members">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true"/>
+            </column>
+            <column name="project_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_project_members_project" references="projects(id)"/>
+            </column>
+            <column name="subject_type" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="subject_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="role" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_by_user_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_project_members_created_by" references="users(id)"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="revoked_at" type="TIMESTAMP"/>
+        </createTable>
+
+        <createIndex tableName="project_members" indexName="idx_project_members_project_id">
+            <column name="project_id"/>
+        </createIndex>
+        <createIndex tableName="project_members" indexName="idx_project_members_subject">
+            <column name="subject_type"/>
+            <column name="subject_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="010-constrain-project-members-enums" author="dev">
+        <sql>
+            ALTER TABLE project_members
+                ADD CONSTRAINT ck_project_members_subject_type
+                CHECK (subject_type IN ('USER', 'GROUP'));
+            ALTER TABLE project_members
+                ADD CONSTRAINT ck_project_members_role
+                CHECK (role IN ('PROJECT_MANAGER', 'PROJECT_CONTRIBUTOR', 'PROJECT_VIEWER'));
+        </sql>
+    </changeSet>
+
+    <changeSet id="010-create-resource-grants" author="dev">
+        <createTable tableName="resource_grants">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true"/>
+            </column>
+            <column name="company_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_resource_grants_company" references="companies(id)"/>
+            </column>
+            <column name="resource_type" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="resource_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="subject_type" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="subject_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="permission" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_by_user_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_resource_grants_created_by" references="users(id)"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expires_at" type="TIMESTAMP"/>
+            <column name="revoked_at" type="TIMESTAMP"/>
+        </createTable>
+
+        <createIndex tableName="resource_grants" indexName="idx_resource_grants_resource">
+            <column name="resource_type"/>
+            <column name="resource_id"/>
+        </createIndex>
+        <createIndex tableName="resource_grants" indexName="idx_resource_grants_subject">
+            <column name="subject_type"/>
+            <column name="subject_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="010-constrain-resource-grants-enums" author="dev">
+        <sql>
+            ALTER TABLE resource_grants
+                ADD CONSTRAINT ck_resource_grants_resource_type
+                CHECK (resource_type IN ('COMPANY', 'GROUP', 'PROJECT', 'ISSUE'));
+            ALTER TABLE resource_grants
+                ADD CONSTRAINT ck_resource_grants_subject_type
+                CHECK (subject_type IN ('USER', 'GROUP'));
+            ALTER TABLE resource_grants
+                ADD CONSTRAINT ck_resource_grants_permission
+                CHECK (permission IN (
+                    'COMPANY_READ',
+                    'COMPANY_UPDATE',
+                    'COMPANY_DELETE',
+                    'COMPANY_MANAGE_USERS',
+                    'COMPANY_MANAGE_ROLES',
+                    'GROUP_READ',
+                    'GROUP_CREATE',
+                    'GROUP_UPDATE',
+                    'GROUP_DELETE',
+                    'GROUP_MANAGE_MEMBERS',
+                    'PROJECT_READ',
+                    'PROJECT_CREATE',
+                    'PROJECT_UPDATE',
+                    'PROJECT_DELETE',
+                    'PROJECT_MANAGE_MEMBERS',
+                    'PROJECT_MANAGE_STATUSES',
+                    'ISSUE_READ',
+                    'ISSUE_CREATE',
+                    'ISSUE_UPDATE',
+                    'ISSUE_DELETE',
+                    'ISSUE_TRANSITION',
+                    'ISSUE_ASSIGN',
+                    'ISSUE_MANAGE_GRANTS'
+                ));
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,6 +1,7 @@
 package com.tixie.project.domain;
 
 import com.tixie.company.CompanyRepository;
+import com.tixie.authz.ProjectAccessMode;
 import com.tixie.issue.domain.IssueSoftDeleteHandler;
 import com.tixie.project.ProjectEntity;
 import com.tixie.project.ProjectRepository;
@@ -45,6 +46,7 @@ public class ProjectService {
         project.companyId = companyId;
         project.name = req.name;
         project.key = req.key;
+        project.accessMode = req.accessMode != null ? req.accessMode : ProjectAccessMode.COMPANY;
         project.createdAt = Instant.now();
 
         projectRepository.persist(project);
@@ -84,6 +86,9 @@ public class ProjectService {
 
         if (req.name != null) {
             project.name = req.name;
+        }
+        if (req.accessMode != null) {
+            project.accessMode = req.accessMode;
         }
 
         return project;

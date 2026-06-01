@@ -1,13 +1,15 @@
 package com.tixie.auth.api;
 
 import com.tixie.auth.CompanyInviteEntity;
-import com.tixie.auth.UserRole;
 import com.tixie.auth.api.dto.CompanyInviteResponse;
 import com.tixie.auth.api.dto.CreateCompanyInviteRequest;
 import com.tixie.auth.api.dto.CurrentUserResponse;
 import com.tixie.auth.domain.CompanyInviteService;
 import com.tixie.auth.domain.CurrentUser;
 import com.tixie.auth.domain.IdentityService;
+import com.tixie.authz.Permission;
+import com.tixie.authz.RequiresPermission;
+import com.tixie.authz.ResourceType;
 import com.tixie.company.CompanyEntity;
 import io.quarkus.security.Authenticated;
 import io.smallrye.common.annotation.RunOnVirtualThread;
@@ -39,11 +41,11 @@ public class InviteResource {
     @POST
     @Path("/companies/{companyId}/invites")
     @Authenticated
+    @RequiresPermission(value = Permission.COMPANY_MANAGE_USERS, resource = ResourceType.COMPANY, idParam = "companyId")
     @Operation(summary = "Invite a user to the current company")
     public Response create(@PathParam("companyId") UUID companyId,
                            @Valid CreateCompanyInviteRequest req) {
-        var user = currentUser.requireCompany(companyId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
+        var user = currentUser.require();
 
         var created = inviteService.create(user, req.email, req.role);
         return Response.status(Response.Status.CREATED)

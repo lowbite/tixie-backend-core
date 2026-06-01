@@ -1,7 +1,10 @@
 package com.tixie.project.api;
 
-import com.tixie.auth.UserRole;
 import com.tixie.auth.domain.CurrentUser;
+import com.tixie.authz.AuthorizationService;
+import com.tixie.authz.Permission;
+import com.tixie.authz.RequiresPermission;
+import com.tixie.authz.ResourceType;
 import com.tixie.project.ProjectEntity;
 import com.tixie.project.ProjectStatusEntity;
 import com.tixie.project.api.dto.CreateProjectRequest;
@@ -37,50 +40,61 @@ public class ProjectResource {
     @Inject
     CurrentUser currentUser;
 
+    @Inject
+    AuthorizationService authorizationService;
+
     @POST
+    @RequiresPermission(value = Permission.PROJECT_CREATE, resource = ResourceType.COMPANY, idParam = "companyId")
     @Operation(summary = "Create a project")
     @APIResponse(responseCode = "201", description = "Project created")
     @APIResponse(responseCode = "400", description = "Validation error")
     @APIResponse(responseCode = "404", description = "Company not found")
     public Response create(@PathParam("companyId") UUID companyId,
                            @Valid CreateProjectRequest req) {
-        var user = currentUser.requireCompany(companyId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         var project = projectService.create(companyId, req);
         return Response.status(Response.Status.CREATED).entity(toResponse(project)).build();
     }
 
     @GET
+    @RequiresPermission(value = Permission.PROJECT_READ, resource = ResourceType.COMPANY, idParam = "companyId")
     @Operation(summary = "List projects for a company")
     @APIResponse(responseCode = "200", description = "List of projects")
     @APIResponse(responseCode = "404", description = "Company not found")
     public List<ProjectResponse> list(@PathParam("companyId") UUID companyId,
                                       @QueryParam("page") @DefaultValue("0") int page,
                                       @QueryParam("size") @DefaultValue("100") int size) {
-        currentUser.requireCompany(companyId);
-        var projects = projectService.list(companyId, page, size);
+        var user = currentUser.require();
+        var projects = projectService.list(companyId).stream()
+                .filter(project -> authorizationService.can(user, Permission.PROJECT_READ, ResourceType.PROJECT, project.id))
+                .skip((long) normalizePage(page) * normalizeSize(size))
+                .limit(normalizeSize(size))
+                .toList();
         var statusesByProjectId = projectService.getStatusesByProjectIds(projects.stream().map(p -> p.id).toList());
         return projects.stream().map(project -> toResponse(project, statusesByProjectId)).toList();
     }
 
     public List<ProjectResponse> list(UUID companyId) {
-        currentUser.requireCompany(companyId);
-        return projectService.list(companyId).stream().map(this::toResponse).toList();
+        var user = currentUser.require();
+        return projectService.list(companyId).stream()
+                .filter(project -> authorizationService.can(user, Permission.PROJECT_READ, ResourceType.PROJECT, project.id))
+                .map(this::toResponse)
+                .toList();
     }
 
     @GET
     @Path("/{projectId}")
+    @RequiresPermission(value = Permission.PROJECT_READ, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "Get a project by ID")
     @APIResponse(responseCode = "200", description = "Project found")
     @APIResponse(responseCode = "404", description = "Project not found")
     public ProjectResponse getById(@PathParam("companyId") UUID companyId,
                                    @PathParam("projectId") UUID projectId) {
-        currentUser.requireCompany(companyId);
         return toResponse(projectService.getById(companyId, projectId));
     }
 
     @PATCH
     @Path("/{projectId}")
+    @RequiresPermission(value = Permission.PROJECT_UPDATE, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "Partially update a project")
     @APIResponse(responseCode = "200", description = "Project updated")
     @APIResponse(responseCode = "400", description = "Validation error")
@@ -88,20 +102,17 @@ public class ProjectResource {
     public ProjectResponse update(@PathParam("companyId") UUID companyId,
                                   @PathParam("projectId") UUID projectId,
                                   @Valid UpdateProjectRequest req) {
-        var user = currentUser.requireCompany(companyId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         return toResponse(projectService.update(companyId, projectId, req));
     }
 
     @DELETE
     @Path("/{projectId}")
+    @RequiresPermission(value = Permission.PROJECT_DELETE, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "Soft-delete a project")
     @APIResponse(responseCode = "204", description = "Project deleted")
     @APIResponse(responseCode = "404", description = "Project not found")
     public Response delete(@PathParam("companyId") UUID companyId,
                            @PathParam("projectId") UUID projectId) {
-        var user = currentUser.requireCompany(companyId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         projectService.delete(companyId, projectId);
         return Response.noContent().build();
     }
@@ -116,6 +127,7 @@ public class ProjectResource {
         response.companyId = project.companyId;
         response.name = project.name;
         response.key = project.key;
+        response.accessMode = project.accessMode;
         response.createdAt = project.createdAt;
         response.statuses = statusesByProjectId.getOrDefault(project.id, List.of()).stream()
                 .sorted(java.util.Comparator.comparingInt(s -> s.displayOrder))
@@ -126,5 +138,13 @@ public class ProjectResource {
 
     private ProjectResponse.StatusRef toStatusRef(ProjectStatusEntity status) {
         return new ProjectResponse.StatusRef(status.id, status.name, status.displayOrder, status.isDefault);
+    }
+
+    private int normalizePage(int page) {
+        return Math.max(page, 0);
+    }
+
+    private int normalizeSize(int size) {
+        return Math.max(1, Math.min(size, 500));
     }
 }

@@ -1,8 +1,5 @@
 package com.tixie.issue.api;
 
-import com.tixie.auth.UserEntity;
-import com.tixie.auth.UserRole;
-import com.tixie.auth.domain.CurrentUser;
 import com.tixie.issue.IssueEntity;
 import com.tixie.issue.api.dto.CreateIssueRequest;
 import com.tixie.issue.api.dto.MoveIssueRequest;
@@ -30,16 +27,13 @@ class IssueResourceTest {
     void endpoints_delegateAndMap() {
         var service = mock(IssueService.class);
         var statuses = mock(ProjectStatusRepository.class);
-        var currentUser = mock(CurrentUser.class);
         var resource = new IssueResource();
         resource.issueService = service;
         resource.projectStatusRepository = statuses;
-        resource.currentUser = currentUser;
 
         UUID projectId = UUID.randomUUID();
         UUID issueId = UUID.randomUUID();
         var issue = issue(projectId, issueId);
-        when(currentUser.requireProject(projectId)).thenReturn(user(UserRole.ADMIN));
         when(service.create(eq(projectId), any(CreateIssueRequest.class))).thenReturn(issue);
         when(service.list(projectId)).thenReturn(List.of(issue));
         when(service.getById(projectId, issueId)).thenReturn(issue);
@@ -81,13 +75,5 @@ class IssueResourceTest {
         i.createdAt = Instant.now();
         i.updatedAt = Instant.now();
         return i;
-    }
-
-    private UserEntity user(UserRole role) {
-        var user = new UserEntity();
-        user.id = UUID.randomUUID();
-        user.companyId = UUID.randomUUID();
-        user.role = role;
-        return user;
     }
 }

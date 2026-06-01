@@ -1,7 +1,9 @@
 package com.tixie.company.api;
 
-import com.tixie.auth.UserRole;
 import com.tixie.auth.domain.CurrentUser;
+import com.tixie.authz.Permission;
+import com.tixie.authz.RequiresPermission;
+import com.tixie.authz.ResourceType;
 import com.tixie.company.CompanyEntity;
 import com.tixie.company.api.dto.CompanyResponse;
 import com.tixie.company.api.dto.UpdateCompanyRequest;
@@ -35,6 +37,7 @@ public class CompanyResource {
     CurrentUser currentUser;
 
     @GET
+    @RequiresPermission(value = Permission.COMPANY_READ, resource = ResourceType.COMPANY)
     @Operation(summary = "List companies visible to the current user")
     @APIResponse(responseCode = "200", description = "List of companies")
     public List<CompanyResponse> list(@QueryParam("page") @DefaultValue("0") int page,
@@ -50,35 +53,33 @@ public class CompanyResource {
 
     @GET
     @Path("/{companyId}")
+    @RequiresPermission(value = Permission.COMPANY_READ, resource = ResourceType.COMPANY, idParam = "companyId")
     @Operation(summary = "Get a company by ID")
     @APIResponse(responseCode = "200", description = "Company found")
     @APIResponse(responseCode = "404", description = "Company not found")
     public CompanyResponse getById(@PathParam("companyId") UUID companyId) {
-        currentUser.requireCompany(companyId);
         return toResponse(companyService.getById(companyId));
     }
 
     @PATCH
     @Path("/{companyId}")
+    @RequiresPermission(value = Permission.COMPANY_UPDATE, resource = ResourceType.COMPANY, idParam = "companyId")
     @Operation(summary = "Partially update a company")
     @APIResponse(responseCode = "200", description = "Company updated")
     @APIResponse(responseCode = "400", description = "Validation error")
     @APIResponse(responseCode = "404", description = "Company not found")
     public CompanyResponse update(@PathParam("companyId") UUID companyId,
                                   @Valid UpdateCompanyRequest req) {
-        var user = currentUser.requireCompany(companyId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         return toResponse(companyService.update(companyId, req));
     }
 
     @DELETE
     @Path("/{companyId}")
+    @RequiresPermission(value = Permission.COMPANY_DELETE, resource = ResourceType.COMPANY, idParam = "companyId")
     @Operation(summary = "Soft-delete a company")
     @APIResponse(responseCode = "204", description = "Company deleted")
     @APIResponse(responseCode = "404", description = "Company not found")
     public Response delete(@PathParam("companyId") UUID companyId) {
-        var user = currentUser.requireCompany(companyId);
-        currentUser.requireAnyRole(user, UserRole.OWNER);
         companyService.delete(companyId);
         return Response.noContent().build();
     }

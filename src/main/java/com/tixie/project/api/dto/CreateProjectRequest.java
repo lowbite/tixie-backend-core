@@ -1,5 +1,6 @@
 package com.tixie.project.api.dto;
 
+import com.tixie.authz.ProjectAccessMode;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -16,4 +17,6 @@ public class CreateProjectRequest {
             message = "Key must be 2–10 uppercase letters/digits and start with a letter"
     )
     public String key;
+
+    public ProjectAccessMode accessMode;
 }

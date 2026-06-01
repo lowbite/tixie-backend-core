@@ -1,7 +1,8 @@
 package com.tixie.issue.api;
 
-import com.tixie.auth.UserRole;
-import com.tixie.auth.domain.CurrentUser;
+import com.tixie.authz.Permission;
+import com.tixie.authz.RequiresPermission;
+import com.tixie.authz.ResourceType;
 import com.tixie.issue.IssueEntity;
 import com.tixie.issue.api.dto.CreateIssueRequest;
 import com.tixie.issue.api.dto.IssueResponse;
@@ -41,36 +42,31 @@ public class IssueResource {
     IssueService issueService;
 
     @Inject
-    CurrentUser currentUser;
-
-    @Inject
     ProjectStatusRepository projectStatusRepository;
 
     @POST
+    @RequiresPermission(value = Permission.ISSUE_CREATE, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "Create an issue")
     @APIResponse(responseCode = "201", description = "Issue created")
     @APIResponse(responseCode = "400", description = "Validation error")
     @APIResponse(responseCode = "404", description = "Project or referenced entity not found")
     public Response create(@PathParam("projectId") UUID projectId, @Valid CreateIssueRequest req) {
-        var user = currentUser.requireProject(projectId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER);
         var issue = issueService.create(projectId, req);
         return Response.status(Response.Status.CREATED).entity(toResponse(issue)).build();
     }
 
     @GET
+    @RequiresPermission(value = Permission.ISSUE_READ, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "List issues for a project")
     @APIResponse(responseCode = "200", description = "List of issues")
     @APIResponse(responseCode = "404", description = "Project not found")
     public List<IssueResponse> list(@PathParam("projectId") UUID projectId,
                                     @QueryParam("page") @DefaultValue("0") int page,
                                     @QueryParam("size") @DefaultValue("100") int size) {
-        currentUser.requireProject(projectId);
         return mapIssues(issueService.list(projectId, page, size));
     }
 
     public List<IssueResponse> list(UUID projectId) {
-        currentUser.requireProject(projectId);
         return issueService.list(projectId).stream().map(this::toResponse).toList();
     }
 
@@ -84,17 +80,18 @@ public class IssueResource {
 
     @GET
     @Path("/{issueId}")
+    @RequiresPermission(value = Permission.ISSUE_READ, resource = ResourceType.ISSUE, idParam = "issueId")
     @Operation(summary = "Get an issue by ID")
     @APIResponse(responseCode = "200", description = "Issue found")
     @APIResponse(responseCode = "404", description = "Issue not found")
     public IssueResponse getById(@PathParam("projectId") UUID projectId,
                                  @PathParam("issueId") UUID issueId) {
-        currentUser.requireProject(projectId);
         return toResponse(issueService.getById(projectId, issueId));
     }
 
     @PATCH
     @Path("/{issueId}")
+    @RequiresPermission(value = Permission.ISSUE_UPDATE, resource = ResourceType.ISSUE, idParam = "issueId")
     @Operation(summary = "Partially update an issue")
     @APIResponse(responseCode = "200", description = "Issue updated")
     @APIResponse(responseCode = "400", description = "Validation error")
@@ -102,34 +99,32 @@ public class IssueResource {
     public IssueResponse patch(@PathParam("projectId") UUID projectId,
                                @PathParam("issueId") UUID issueId,
                                @Valid PatchIssueRequest req) {
-        var user = currentUser.requireProject(projectId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER);
         return toResponse(issueService.patch(projectId, issueId, req));
     }
 
     @DELETE
     @Path("/{issueId}")
+    @RequiresPermission(value = Permission.ISSUE_DELETE, resource = ResourceType.ISSUE, idParam = "issueId")
     @Operation(summary = "Soft-delete an issue and its descendants")
     @APIResponse(responseCode = "204", description = "Issue deleted")
     @APIResponse(responseCode = "404", description = "Issue not found")
     public Response delete(@PathParam("projectId") UUID projectId,
                            @PathParam("issueId") UUID issueId) {
-        var user = currentUser.requireProject(projectId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         issueService.delete(projectId, issueId);
         return Response.noContent().build();
     }
 
     @GET
     @Path("/board")
+    @RequiresPermission(value = Permission.ISSUE_READ, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "Get project board with columns and ordered issues")
     public ProjectBoardResponse board(@PathParam("projectId") UUID projectId) {
-        currentUser.requireProject(projectId);
         return issueService.board(projectId);
     }
 
     @POST
     @Path("/{issueId}/transitions")
+    @RequiresPermission(value = Permission.ISSUE_TRANSITION, resource = ResourceType.ISSUE, idParam = "issueId")
     @Operation(summary = "Transition issue to another status")
     @APIResponse(responseCode = "200", description = "Issue transitioned")
     @APIResponse(responseCode = "400", description = "Validation error")
@@ -137,19 +132,16 @@ public class IssueResource {
     public IssueResponse transition(@PathParam("projectId") UUID projectId,
                                     @PathParam("issueId") UUID issueId,
                                     @Valid TransitionIssueRequest req) {
-        var user = currentUser.requireProject(projectId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER);
         return toResponse(issueService.transition(projectId, issueId, req.targetStatusId));
     }
 
     @POST
     @Path("/{issueId}/move")
+    @RequiresPermission(value = Permission.ISSUE_TRANSITION, resource = ResourceType.ISSUE, idParam = "issueId")
     @Operation(summary = "Move issue to status/position on board")
     public IssueResponse move(@PathParam("projectId") UUID projectId,
                               @PathParam("issueId") UUID issueId,
                               @Valid MoveIssueRequest req) {
-        var user = currentUser.requireProject(projectId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER);
         return toResponse(issueService.move(projectId, issueId, req));
     }
 

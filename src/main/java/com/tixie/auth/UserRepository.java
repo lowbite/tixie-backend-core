@@ -16,4 +16,8 @@ public class UserRepository implements PanacheRepositoryBase<UserEntity, UUID> {
     public Optional<UserEntity> findActiveByEmail(String email) {
         return find("lower(email) = lower(?1) and disabledAt is null", email).firstResultOptional();
     }
+
+    public Optional<UserEntity> findActiveByIdAndCompanyId(UUID id, UUID companyId) {
+        return find("id = ?1 and companyId = ?2 and disabledAt is null", id, companyId).firstResultOptional();
+    }
 }

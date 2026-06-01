@@ -1,6 +1,5 @@
-package com.tixie.project;
+package com.tixie.group;
 
-import com.tixie.authz.ProjectAccessMode;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.*;
 import org.hibernate.annotations.UuidGenerator;
@@ -9,8 +8,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "projects")
-public class ProjectEntity extends PanacheEntityBase {
+@Table(name = "groups")
+public class GroupEntity extends PanacheEntityBase {
 
     @Id
     @GeneratedValue
@@ -23,15 +22,11 @@ public class ProjectEntity extends PanacheEntityBase {
     @Column(nullable = false)
     public String name;
 
-    @Column(nullable = false, unique = true)
-    public String key;
+    @Column(name = "created_by_user_id", nullable = false)
+    public UUID createdByUserId;
 
     @Column(name = "created_at", nullable = false)
     public Instant createdAt;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "access_mode", nullable = false)
-    public ProjectAccessMode accessMode = ProjectAccessMode.COMPANY;
 
     @Column(name = "deleted_at")
     public Instant deletedAt;

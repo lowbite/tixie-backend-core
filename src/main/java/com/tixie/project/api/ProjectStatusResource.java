@@ -1,7 +1,8 @@
 package com.tixie.project.api;
 
-import com.tixie.auth.UserRole;
-import com.tixie.auth.domain.CurrentUser;
+import com.tixie.authz.Permission;
+import com.tixie.authz.RequiresPermission;
+import com.tixie.authz.ResourceType;
 import com.tixie.project.ProjectStatusEntity;
 import com.tixie.project.api.dto.CreateProjectStatusRequest;
 import com.tixie.project.api.dto.PatchProjectStatusRequest;
@@ -33,57 +34,50 @@ public class ProjectStatusResource {
     @Inject
     ProjectStatusService projectStatusService;
 
-    @Inject
-    CurrentUser currentUser;
-
     @GET
+    @RequiresPermission(value = Permission.PROJECT_READ, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "List active statuses for project")
     public List<ProjectStatusResponse> list(@PathParam("projectId") UUID projectId) {
-        currentUser.requireProject(projectId);
         return projectStatusService.list(projectId).stream().map(this::toResponse).toList();
     }
 
     @POST
+    @RequiresPermission(value = Permission.PROJECT_MANAGE_STATUSES, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "Create project status")
     @APIResponse(responseCode = "201", description = "Status created")
     public Response create(@PathParam("projectId") UUID projectId,
                            @Valid CreateProjectStatusRequest req) {
-        var user = currentUser.requireProject(projectId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         var created = projectStatusService.create(projectId, req.name, req.displayOrder, req.isDefault);
         return Response.status(Response.Status.CREATED).entity(toResponse(created)).build();
     }
 
     @PATCH
     @Path("/{statusId}")
+    @RequiresPermission(value = Permission.PROJECT_MANAGE_STATUSES, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "Patch project status")
     public ProjectStatusResponse patch(@PathParam("projectId") UUID projectId,
                                        @PathParam("statusId") UUID statusId,
                                        @Valid PatchProjectStatusRequest req) {
-        var user = currentUser.requireProject(projectId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         return toResponse(projectStatusService.patch(projectId, statusId, req.name, req.displayOrder, req.isDefault));
     }
 
     @PATCH
     @Path("/reorder")
+    @RequiresPermission(value = Permission.PROJECT_MANAGE_STATUSES, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "Reorder project statuses")
     public List<ProjectStatusResponse> reorder(@PathParam("projectId") UUID projectId,
                                                @Valid ReorderProjectStatusesRequest req) {
-        var user = currentUser.requireProject(projectId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         projectStatusService.reorder(projectId, req.statusIds);
         return projectStatusService.list(projectId).stream().map(this::toResponse).toList();
     }
 
     @DELETE
     @Path("/{statusId}")
+    @RequiresPermission(value = Permission.PROJECT_MANAGE_STATUSES, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "Delete project status")
     public Response delete(@PathParam("projectId") UUID projectId,
                            @PathParam("statusId") UUID statusId,
                            @QueryParam("moveIssuesTo") UUID moveIssuesTo) {
-        var user = currentUser.requireProject(projectId);
-        currentUser.requireAnyRole(user, UserRole.OWNER, UserRole.ADMIN);
         projectStatusService.delete(projectId, statusId, moveIssuesTo);
         return Response.noContent().build();
     }
