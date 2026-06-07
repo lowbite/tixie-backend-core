@@ -19,7 +19,12 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.security.SecurityRequirement;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.util.List;
@@ -30,6 +35,7 @@ import java.util.UUID;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Projects")
+@SecurityRequirement(name = "bearerAuth")
 @RunOnVirtualThread
 @Authenticated
 public class ProjectResource {
@@ -46,10 +52,14 @@ public class ProjectResource {
     @POST
     @RequiresPermission(value = Permission.PROJECT_CREATE, resource = ResourceType.COMPANY, idParam = "companyId")
     @Operation(summary = "Create a project")
-    @APIResponse(responseCode = "201", description = "Project created")
+    @APIResponse(responseCode = "201", description = "Project created",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = ProjectResponse.class)))
     @APIResponse(responseCode = "400", description = "Validation error")
+    @APIResponse(responseCode = "401", description = "Authentication required")
+    @APIResponse(responseCode = "403", description = "Insufficient permissions")
     @APIResponse(responseCode = "404", description = "Company not found")
-    public Response create(@PathParam("companyId") UUID companyId,
+    public Response create(@Parameter(description = "Company ID") @PathParam("companyId") UUID companyId,
                            @Valid CreateProjectRequest req) {
         var project = projectService.create(companyId, req);
         return Response.status(Response.Status.CREATED).entity(toResponse(project)).build();
@@ -58,11 +68,15 @@ public class ProjectResource {
     @GET
     @RequiresPermission(value = Permission.PROJECT_READ, resource = ResourceType.COMPANY, idParam = "companyId")
     @Operation(summary = "List projects for a company")
-    @APIResponse(responseCode = "200", description = "List of projects")
+    @APIResponse(responseCode = "200", description = "List of projects",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(type = SchemaType.ARRAY, implementation = ProjectResponse.class)))
+    @APIResponse(responseCode = "401", description = "Authentication required")
+    @APIResponse(responseCode = "403", description = "Insufficient permissions")
     @APIResponse(responseCode = "404", description = "Company not found")
-    public List<ProjectResponse> list(@PathParam("companyId") UUID companyId,
-                                      @QueryParam("page") @DefaultValue("0") int page,
-                                      @QueryParam("size") @DefaultValue("100") int size) {
+    public List<ProjectResponse> list(@Parameter(description = "Company ID") @PathParam("companyId") UUID companyId,
+                                      @Parameter(description = "Zero-based page index") @QueryParam("page") @DefaultValue("0") int page,
+                                      @Parameter(description = "Page size, capped at 500") @QueryParam("size") @DefaultValue("100") int size) {
         var user = currentUser.require();
         var projects = projectService.list(companyId).stream()
                 .filter(project -> authorizationService.can(user, Permission.PROJECT_READ, ResourceType.PROJECT, project.id))
@@ -85,10 +99,14 @@ public class ProjectResource {
     @Path("/{projectId}")
     @RequiresPermission(value = Permission.PROJECT_READ, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "Get a project by ID")
-    @APIResponse(responseCode = "200", description = "Project found")
+    @APIResponse(responseCode = "200", description = "Project found",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = ProjectResponse.class)))
+    @APIResponse(responseCode = "401", description = "Authentication required")
+    @APIResponse(responseCode = "403", description = "Insufficient permissions")
     @APIResponse(responseCode = "404", description = "Project not found")
-    public ProjectResponse getById(@PathParam("companyId") UUID companyId,
-                                   @PathParam("projectId") UUID projectId) {
+    public ProjectResponse getById(@Parameter(description = "Company ID") @PathParam("companyId") UUID companyId,
+                                   @Parameter(description = "Project ID") @PathParam("projectId") UUID projectId) {
         return toResponse(projectService.getById(companyId, projectId));
     }
 
@@ -96,11 +114,15 @@ public class ProjectResource {
     @Path("/{projectId}")
     @RequiresPermission(value = Permission.PROJECT_UPDATE, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "Partially update a project")
-    @APIResponse(responseCode = "200", description = "Project updated")
+    @APIResponse(responseCode = "200", description = "Project updated",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = ProjectResponse.class)))
     @APIResponse(responseCode = "400", description = "Validation error")
+    @APIResponse(responseCode = "401", description = "Authentication required")
+    @APIResponse(responseCode = "403", description = "Insufficient permissions")
     @APIResponse(responseCode = "404", description = "Project not found")
-    public ProjectResponse update(@PathParam("companyId") UUID companyId,
-                                  @PathParam("projectId") UUID projectId,
+    public ProjectResponse update(@Parameter(description = "Company ID") @PathParam("companyId") UUID companyId,
+                                  @Parameter(description = "Project ID") @PathParam("projectId") UUID projectId,
                                   @Valid UpdateProjectRequest req) {
         return toResponse(projectService.update(companyId, projectId, req));
     }
@@ -110,9 +132,11 @@ public class ProjectResource {
     @RequiresPermission(value = Permission.PROJECT_DELETE, resource = ResourceType.PROJECT, idParam = "projectId")
     @Operation(summary = "Soft-delete a project")
     @APIResponse(responseCode = "204", description = "Project deleted")
+    @APIResponse(responseCode = "401", description = "Authentication required")
+    @APIResponse(responseCode = "403", description = "Insufficient permissions")
     @APIResponse(responseCode = "404", description = "Project not found")
-    public Response delete(@PathParam("companyId") UUID companyId,
-                           @PathParam("projectId") UUID projectId) {
+    public Response delete(@Parameter(description = "Company ID") @PathParam("companyId") UUID companyId,
+                           @Parameter(description = "Project ID") @PathParam("projectId") UUID projectId) {
         projectService.delete(companyId, projectId);
         return Response.noContent().build();
     }

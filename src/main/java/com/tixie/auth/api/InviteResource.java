@@ -19,6 +19,11 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.security.SecurityRequirement;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.util.UUID;
@@ -43,7 +48,15 @@ public class InviteResource {
     @Authenticated
     @RequiresPermission(value = Permission.COMPANY_MANAGE_USERS, resource = ResourceType.COMPANY, idParam = "companyId")
     @Operation(summary = "Invite a user to the current company")
-    public Response create(@PathParam("companyId") UUID companyId,
+    @SecurityRequirement(name = "bearerAuth")
+    @APIResponse(responseCode = "201", description = "Invite created",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CompanyInviteResponse.class)))
+    @APIResponse(responseCode = "400", description = "Validation error")
+    @APIResponse(responseCode = "401", description = "Authentication required")
+    @APIResponse(responseCode = "403", description = "Insufficient permissions")
+    @APIResponse(responseCode = "404", description = "Company not found")
+    public Response create(@Parameter(description = "Company ID") @PathParam("companyId") UUID companyId,
                            @Valid CreateCompanyInviteRequest req) {
         var user = currentUser.require();
 
@@ -56,7 +69,11 @@ public class InviteResource {
     @GET
     @Path("/invites/{token}")
     @Operation(summary = "Get pending invite details")
-    public CompanyInviteResponse get(@PathParam("token") String token) {
+    @APIResponse(responseCode = "200", description = "Invite details",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CompanyInviteResponse.class)))
+    @APIResponse(responseCode = "404", description = "Invite not found or expired")
+    public CompanyInviteResponse get(@Parameter(description = "Invite token") @PathParam("token") String token) {
         var details = inviteService.get(token);
         return toResponse(details.invite(), details.company(), null);
     }
@@ -65,7 +82,14 @@ public class InviteResource {
     @Path("/invites/{token}/accept")
     @Authenticated
     @Operation(summary = "Accept a pending invite")
-    public CurrentUserResponse accept(@PathParam("token") String token) {
+    @SecurityRequirement(name = "bearerAuth")
+    @APIResponse(responseCode = "200", description = "Invite accepted",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CurrentUserResponse.class)))
+    @APIResponse(responseCode = "400", description = "Invite email does not match authenticated identity")
+    @APIResponse(responseCode = "401", description = "Authentication required")
+    @APIResponse(responseCode = "404", description = "Invite not found or expired")
+    public CurrentUserResponse accept(@Parameter(description = "Invite token") @PathParam("token") String token) {
         var user = inviteService.accept(token, identityService.currentIdentity());
         return AuthResource.toResponse(user);
     }
